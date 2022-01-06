@@ -16,17 +16,15 @@ The root object of a dataset is a dictionary. It contains the following elements
 - `format` (dictionary, required): Structure and human-readable names for values in the data.
 - `formulas` (dictionary, optional): Values to calculate from the data and display above the dataset itself.
 - `sheets` (dictionary, optional): The actual data. Although technically not required, datasets without it are useless.
-  Sheets are sets of identically structured data that is organized into logical groups and consists of values that are
-  later matched with a name and type, as defined in `format`.
 
 ## The `format` value
 This value describes how data in the dataset is structured and how to display it.
 Specifically, it tells which groups (tabs above displayed values) exist, how many values are in each one,
 and for each value, its human-readable description and its value type (e.g. an integer, a time, or text).
 
-The value is a dictionary where each element is the name of a group mapped to its contents. The order of these elements
-is preserved when loading the dataset. The value of each element is another dictionary where each element is the
-name of a value mapped to its type. The following types are recognized (described values are used in `sheets`):
+The value is a dictionary where each element is the name of a group mapped to its contents. The order of these groups
+is preserved when loading the dataset. The value of each group is another dictionary whose each element is the
+name of a value mapped to its type. The following types are recognized (described values are stored in `sheets`):
 
 - `text`: A string of text.
 - `int`: An integer.
@@ -36,11 +34,11 @@ name of a value mapped to its type. The following types are recognized (describe
   the maximum possible actual values in the given month and year. When loaded, it's converted to `datetime.date`.
 - `time`: A time of day in the format HH:MM:SS (for example, `21:50:00`). HH must be less than 24; MM and SS must both be less than 60.
   When loaded, it's converted to `datetime.time`.
-- `datetime`: A time and date in a subset of the ISO 8601 format, YYYY-MM-DD HH:MM:SS (for example, `2022-01-05 21:50:00`).
+- `datetime`: A time and date in a subset of the ISO 8601 format, specifically YYYY-MM-DD HH:MM:SS (for example, `2022-01-05 21:50:00`).
   The values have the same restrictions as `date` and `time`. When loaded, it's converted to `datetime.datetime`.
 - `timedelta`: A duration of time in the format XXdXXhXXmXXs, with each element optional, though at least one is required
   (for example, `2d15h` or `1h25m33s`). Unlike `time`, the total may exceed 24 hours, and each element has an unlimited value.
-  When loaded, it's converted to `datetime.timedelta`, but only elements present in the raw value are displayed.
+  When loaded, it's converted to `datetime.timedelta`, but only elements present in the raw value are displayed (exceeding their normal values if needed).
 
 ## The `formulas` value
 This value describes which values (if any) to calculate and display above the data, and how to calculate them.
@@ -49,18 +47,18 @@ the corresponding value. All built-in variable are available, as well as the fol
 
 - `sheets`: The value of `dataset.sheets` where `dataset` is the currently loaded Dataset object. It is a dictionary
   where each key is the name of a datasheet and the value is a structure very similar to `format`, except instead of
-  value types, it contains actual values (already converted to matching Python types). Note that values of type `price`
-  are regular floats; there's no need to remove their prefix or suffix.
+  value types, it contains actual values (already converted to matching Python types). Note that values of type `Price`
+  act as regular floats; there's no need to remove their prefix or suffix.
 - `price`: If you'd like to display a price according to the dataset configuration, this function converts a float to a price string.
 - `current_sheet`: The currently displayed datasheet (structure identical to an element of `sheets`).
-- `results`: Values calculated by the previous formulas in a dictionary where the keys are formula names.
+- `results`: Values calculated by previously specified formulas in a dictionary where the keys are formula names.
 - `cell`: This is a shorthand way to retrieve values from a sheet. This function takes a sheet as its first argument
   and a cell ID as the second. The ID is one or more capital letters followed by one or more digits; the letter(s) represent
   a group, with A being the first group, B being the second, etc., until Z - it's then followed by AA, AB, and so on;
-  and the number represents a value in that group (note that they start at 1, not 0). Invalid cell IDs will raise an error.
+  the number represents a value in that group (note that they start at 1, not 0). Invalid cell IDs will raise an error.
 
 ## The `sheets` value
 This value contains the actual data in the dataset.
-It is a list where each element corresponds to a datasheet; they must be in the same order as in `format`.
-Each datasheet is a list with values corresponding to the value types described in the matching `format` section, in the same order.
+It is a dictionary where datasheet names are mapped to datasheets.
+Each datasheet is a list with values corresponding to the groups and value types described in the matching `format` sections, all in the same order.
 Values other than those of type `int`, `double`, and `price` should be stored as strings (i.e. quoted).
