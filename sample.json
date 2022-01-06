@@ -1,0 +1,41 @@
+{
+	"name": "Sample dataset",
+	"price_prefix": "$",
+	"format": {
+		"Group 1": {
+			"Integer": "int",
+			"Decimal": "float",
+			"Time": "time",
+			"Date": "date",
+			"Date and time": "datetime",
+			"Duration": "timedelta"
+		},
+		"Group 2": {
+			"Value 1": "int",
+			"Value 2": "int",
+			"Value 3": "int"
+		},
+		"Wage information": {
+			"Starting time": "datetime",
+			"Ending time": "datetime",
+			"Hourly wage": "price"
+		}
+	},
+	"formulas": {
+		"Sum of values": "sum(current_sheet['Group 2'].values())",
+		"Total hours worked": "round(sum(((sheet['Wage information']['Ending time'] - sheet['Wage information']['Starting time']).total_seconds() / 3600) for sheet in sheets.values()), 2)",
+		"Income": "price(sum(cell(sheet, 'C3') * ((cell(sheet, 'C2') - cell(sheet, 'C1')).total_seconds() / 3600) for sheet in sheets.values()))"
+	},
+	"sheets": {
+		"First sheet": [
+			[50, 123.456, "05:00", "2021-01-06", "2021-01-06 05:00", "7h53m"],
+			[12, 15, 35],
+			["2020-12-24 06:00", "2020-12-24 18:35", 14.50]
+		],
+		"Second sheet": [
+			[60, -1, "05:01", "2021-01-06", "2021-01-06 05:01", "999d"],
+			[1432, 487467, -2],
+			["2020-12-27 07:00", "2020-12-27 15:10", 14.50]
+		]
+	}
+}
