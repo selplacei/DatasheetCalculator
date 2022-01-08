@@ -14,6 +14,7 @@ The root object of a dataset is a dictionary. It contains the following elements
 - `price_prefix` (string, optional): Prefix for all price values. `$` by default.
 - `price_suffix` (string, optional): Suffix for all price values. Empty by default.
 - `format` (dictionary, required): Structure and human-readable names for values in the data.
+- `special` (dictionary, optional): Format for the `__special__` sheet, if one is to exist.
 - `formulas` (dictionary, optional): Values to calculate from the data and display above the dataset itself.
 - `sheets` (dictionary, optional): The actual data. Although technically not required, datasets without it are useless.
 
@@ -41,6 +42,11 @@ name of a value mapped to its type. The following types are recognized (describe
   When loaded, it's converted to `datetime.timedelta`, but only elements present in the raw value are displayed (exceeding their normal values if needed).
 - `calcdelta_d`, `calcdelta_t`, `calcdelta_dt`: Two `date`, `time`, or `datetime` values (stored as a list; both must be of the same type), representing a start time and an end time. When loaded, it's converted to one of the `Calcdelta` classes, which has the attributes `type`, `start`, `end`, and `delta`.
 
+## The `special` value
+It's possible to have one special sheet whose format is different to others; this is useful for storing values that can be
+adjusted and are used in formulas, but stay the same across all sheets. The special sheet is always displayed first in the
+sheet list. The contents of this value have identical structure to the `format` value.
+
 ## The `formulas` value
 This value describes which values (if any) to calculate and display above the data, and how to calculate them.
 It is a dictionary where each key is a human-readable name of the formula and the value is a Python expression that calculates
@@ -50,8 +56,9 @@ the corresponding value. All built-in variable are available, plus the libraries
   where each key is the name of a datasheet and the value is a structure very similar to `format`, except instead of
   value types, it contains actual values (already converted to matching Python types). Note that values of type `Price`
   act as regular floats; there's no need to remove their prefix or suffix.
+- `special`: The `special` sheet.
 - `price`: If you'd like to display a price according to the dataset configuration, this function converts a float to a price string.
-- `current_sheet`: The currently displayed datasheet (structure identical to an element of `sheets`).
+- `current`: The currently displayed datasheet (structure identical to an element of `sheets`).
 - `results`: Values calculated by previously specified formulas in a dictionary where the keys are formula names.
 - `cell`: This is a shorthand way to retrieve values from a sheet. This function takes a sheet as its first argument
   and a cell ID as the second. The ID is one or more capital letters followed by one or more digits; the letter(s) represent
@@ -63,4 +70,7 @@ the corresponding value. All built-in variable are available, plus the libraries
 This value contains the actual data in the dataset.
 It is a dictionary where datasheet names are mapped to datasheets.
 Each datasheet is a list with values corresponding to the groups and value types described in the matching `format` sections, all in the same order.
+Notwithstanding that, the `__special__` sheet is structured according to `special`, though its inner values work the same way as other datasheets.
+Another optional special sheet is `__default__`. It is not displayed in the GUI or used in formulas; rather, it provides default values to use
+when the user clicks "Add blank sheet". If this sheet doesn't exist, default values are hard-coded to be today's date for dates and 0/empty for everything else.
 Values other than those of type `int`, `double`, and `price` should be stored as strings (i.e. quoted).

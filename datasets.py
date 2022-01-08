@@ -84,15 +84,19 @@ class Dataset:
 		self.formulas = data.get('formulas', None)
 		self.results = {k: None for k in self.formulas.keys()}
 		self.format = data['format']
+		self.special_format = data['special']
 		self.groups = self.format.keys()
 		self.sheets = {}
 		for sheet_name, sheet_data in data['sheets'].items():
-			for group_name, group_data in zip(self.format.keys(), sheet_data):
-				for value_name, value in zip(self.format[group_name], group_data):
-					value_type = self.format[group_name][value_name]
-					if value_type in ('int', 'float', 'text'):
+			format_spec = self.special_format if sheet_name == '__special__' else self.format
+			for group_name, group_data in zip(format_spec.keys(), sheet_data):
+				for value_name, value in zip(format_spec[group_name], group_data):
+					value_type = format_spec[group_name][value_name]
+					if value_type in ('int', 'text'):
 						# Preserve the type
 						pass
+					elif value_type == 'float':
+						value = float(value)
 					elif value_type == 'price':
 						value = Price(value)
 					elif value_type == 'date':
@@ -134,7 +138,8 @@ class Dataset:
 					self.sheets.setdefault(sheet_name, {})
 					self.sheets[sheet_name].setdefault(group_name, {})
 					self.sheets[sheet_name][group_name][value_name] = value
-		self.default = self.sheets.pop('default', None) or self.generate_default()
+		self.default = self.sheets.pop('__default__', None) or self.generate_default()
+		self.special = self.sheets.pop('__special__', None)
 
 	def generate_default(self):
 		sheet = {}
@@ -186,7 +191,8 @@ class Dataset:
 			try:
 				self.results[label] = eval(formula, {
 					'sheets': self.sheets,
-					'current_sheet': current_sheet,
+					'current': current_sheet,
+					'special': self.special,
 					'results': self.results,
 					'price': self.format_price,
 					'cell': self.get_cell,

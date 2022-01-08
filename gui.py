@@ -20,8 +20,10 @@ class MainWindow(QMainWindow):
 		#with open('/home/selplacei/Projects/DatasheetCalculator/sample.json') as f:
 		with open('/home/selplacei/Documents/mom_work_2021.json') as f:
 			json_str = f.read()
-		dataset_view = DatasetView(datasets.Dataset.from_json(json_str))
+		dataset = datasets.Dataset.from_json(json_str)
+		dataset_view = DatasetView(dataset)
 		self.setCentralWidget(dataset_view)
+		self.setWindowTitle(f'{dataset.name} - DatasheetCalculator')
 
 
 class DatasetView(QWidget):
@@ -36,6 +38,14 @@ class DatasetView(QWidget):
 			self.dataset.price_prefix,
 			self.dataset.price_suffix
 		)
+		if self.dataset.special:
+			self.special_view = SingleSheetView(
+				self.dataset.special,
+				self.dataset.price_prefix,
+				self.dataset.price_suffix
+			)
+		else:
+			self.special_view = None
 		self.name_label = QLabel(dataset.name)
 		self.formula_view = FormulaView(dataset)
 		self.extra_buttons = ExtraButtons()
@@ -43,24 +53,32 @@ class DatasetView(QWidget):
 		self.sheet_view.valueChanged.connect(lambda g, n, v: self.valueChanged.emit(
 			self.current_sheet_name(), g, n, v
 		))
+		if self.dataset.special:
+			self.tab_bar.addTab('[Global Values]')
 		for sheet_name in self.dataset.sheets.keys():
 			self.tab_bar.addTab(sheet_name)
 
 		layout = QVBoxLayout()
 		layout.addWidget(self.name_label)
 		layout.addWidget(self.formula_view)
+		if self.dataset.special:
+			layout.addWidget(self.special_view)
+			self.special_view.hide()
 		layout.addWidget(self.sheet_view)
+		if self.dataset.special:
+			self.sheet_view.hide()
 		layout.addWidget(self.tab_bar)
 		layout.addWidget(self.extra_buttons)
 		self.setLayout(layout)
 		self.tab_bar.currentChanged.connect(self.recompute)
-		self.tab_bar.currentChanged.connect(self.update_sheet_view)
+		self.tab_bar.currentChanged.connect(self.update_views)
 		self.valueChanged.connect(self.update_dataset)
 		self.extra_buttons.createSheet.connect(lambda: self.create_sheet(f'Sheet {self.tab_bar.count() + 1}'))
 		self.extra_buttons.duplicateSheet.connect(lambda: self.duplicate_sheet(
-			self.tab_bar.currentIndex()
+			self.current_index()
 		))
 		self.extra_buttons.renameSheet.connect(self.user_rename_sheet)
+		self.update_views()
 
 	def update_dataset(self, sheet, group, name, value, recompute=True):
 		self.dataset.sheets[sheet][group][name] = value
@@ -68,28 +86,61 @@ class DatasetView(QWidget):
 			self.recompute()
 
 	def recompute(self):
-		self.dataset.compute_results(self.current_sheet())
-		self.formula_view.update()
+		if not self.special_selected():
+			self.dataset.compute_results(self.current_sheet())
+			self.formula_view.update()
 
-	def update_sheet_view(self):
-		self.sheet_view.set_value(self.current_sheet())
+	def update_views(self):
+		if not self.special_selected():
+			self.sheet_view.set_value(self.current_sheet())
+			if self.special_view:
+				self.special_view.hide()
+				self.sheet_view.show()
+		elif self.special_view:
+			self.sheet_view.hide()
+			self.special_view.show()
+		self.extra_buttons.set_special_selected(self.special_selected())
+
+	def special_selected(self):
+		return self.dataset.special and self.current_index() == -1
 
 	def current_sheet_name(self):
 		try:
-			return list(self.dataset.sheets.keys())[self.tab_bar.currentIndex()]
+			return self.sheet_name_at(self.current_index())
 		except IndexError:
 			return None
 
 	def current_sheet(self):
 		try:
-			return list(self.dataset.sheets.values())[self.tab_bar.currentIndex()]
+			return self.sheet_at(self.current_index())
 		except IndexError:
 			return None
 
+	def current_index(self):
+		if self.dataset.special:
+			return self.tab_bar.currentIndex() - 1
+		return self.tab_bar.currentIndex()
+
+	def sheet_at(self, index):
+		if index >= 0:
+			return list(self.dataset.sheets.values())[index]
+		elif index == -1:
+			return self.dataset.special
+
+	def sheet_name_at(self, index):
+		if index >= 0:
+			return list(self.dataset.sheets.keys())[index]
+		elif index == -1:
+			return self.dataset.special
+
 	def set_current_sheet(self, index):
 		# Negative indices are supported
-		index = index % self.tab_bar.count()
-		self.tab_bar.setCurrentIndex(index)
+		index = index % (self.tab_bar.count() - 1)
+		if self.dataset.special:
+			self.tab_bar.setCurrentIndex(index + 1)
+		else:
+			self.tab_bar.setCurrentIndex(index)
+		self.update_views()
 
 	def find_non_duplicate_name(self, name, exist_ok=True):
 		if name in self.dataset.sheets:
@@ -111,7 +162,8 @@ class DatasetView(QWidget):
 			self.set_current_sheet(-1)
 
 	def duplicate_sheet(self, index, switch=True, exist_ok=True):
-		name, sheet = list(self.dataset.sheets.items())[index]
+		name = self.sheet_name_at(index)
+		sheet = self.sheet_at(index)
 		name += ' (copy)'
 		name = self.find_non_duplicate_name(name, exist_ok)
 		self.dataset.sheets[name] = sheet.copy()
@@ -124,13 +176,13 @@ class DatasetView(QWidget):
 			self, "Rename sheet", "New sheet name:", text=self.current_sheet_name()
 		)
 		if ok:
-			self.rename_sheet(self.tab_bar.currentIndex(), result)
+			self.rename_sheet(self.current_index(), result)
 
 	def rename_sheet(self, index, result, exist_ok=True):
 		new_sheets = list(self.dataset.sheets.items())
 		previous, sheet = new_sheets[index]
 		result = self.find_non_duplicate_name(result, exist_ok)
-		self.tab_bar.setTabText(index, result)
+		self.tab_bar.setTabText(index + 1, result)
 		new_sheets[index] = (result, sheet)
 		self.dataset.sheets = dict(new_sheets)
 
@@ -142,19 +194,23 @@ class ExtraButtons(QWidget):
 
 	def __init__(self, parent=None):
 		super().__init__(parent)
-		create_sheet_btn = QPushButton('Add blank sheet')
-		duplicate_sheet_btn = QPushButton('Duplicate sheet')
-		rename_sheet_btn = QPushButton('Rename sheet')
+		self.create_sheet_btn = QPushButton('Add blank sheet')
+		self.duplicate_sheet_btn = QPushButton('Duplicate sheet')
+		self.rename_sheet_btn = QPushButton('Rename sheet')
 
 		layout = QHBoxLayout()
-		layout.addWidget(create_sheet_btn)
-		layout.addWidget(duplicate_sheet_btn)
-		layout.addWidget(rename_sheet_btn)
+		layout.addWidget(self.create_sheet_btn)
+		layout.addWidget(self.duplicate_sheet_btn)
+		layout.addWidget(self.rename_sheet_btn)
 		self.setLayout(layout)
 
-		create_sheet_btn.clicked.connect(self.createSheet.emit)
-		duplicate_sheet_btn.clicked.connect(self.duplicateSheet.emit)
-		rename_sheet_btn.clicked.connect(self.renameSheet.emit)
+		self.create_sheet_btn.clicked.connect(self.createSheet.emit)
+		self.duplicate_sheet_btn.clicked.connect(self.duplicateSheet.emit)
+		self.rename_sheet_btn.clicked.connect(self.renameSheet.emit)
+
+	def set_special_selected(self, val):
+		self.duplicate_sheet_btn.setDisabled(val)
+		self.rename_sheet_btn.setDisabled(val)
 
 
 class FormulaView(QWidget):
@@ -441,8 +497,8 @@ class SingleCalcdeltaView(SingleValueView):
 	signal_name = NotImplemented
 
 	def __init__(self, name, value, **kwargs):
+		self._disable_updating_limits = False
 		super().__init__(name, value, **kwargs)
-		self.valueChanged.connect(lambda _: self.update_limits())
 
 	def make_value_widget(self):
 		# Some absolutely terrible code here, and in this whole "3 things at once" thing
@@ -455,6 +511,7 @@ class SingleCalcdeltaView(SingleValueView):
 		w_end = self.widget_type()
 		getattr(w_start, self.signal_name).connect(lambda _: self.valueChanged.emit(self.get_value()))
 		getattr(w_end, self.signal_name).connect(lambda _: self.valueChanged.emit(self.get_value()))
+		self.valueChanged.connect(self.update_limits)
 		l_start.setAlignment(Qt.AlignRight)
 		l_end.setAlignment(Qt.AlignRight)
 		w_start.setCalendarPopup(True)
@@ -495,12 +552,24 @@ class SingleCalcdeltaView(SingleValueView):
 			raise TypeError(
 				f'Attempted to set non-matching value type {type(value[0])} to {type(self)} which only accepts {self.value_type}'
 			)
+		self.set_disable_limits(True)
 		self.set_start(value[0])
 		self.set_end(value[1])
+		self.set_disable_limits(False)
 
 	def update_limits(self):
-		if self.get_start() > self.get_end():
+		if not self._disable_updating_limits and self.get_start() > self.get_end():
 			self.set_end(self.get_start())
+
+	def set_disable_limits(self, val):
+		self._disable_updating_limits = val
+		if val:
+			self._w_start().clearMinimumDateTime()
+			self._w_start().clearMaximumDateTime()
+			self._w_end().clearMinimumDateTime()
+			self._w_end().clearMaximumDateTime()
+		else:
+			self.update_limits()
 
 
 class SingleCalcdelta_dView(SingleCalcdeltaView):
