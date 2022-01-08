@@ -32,18 +32,19 @@ name of a value mapped to its type. The following types are recognized (describe
 - `price`: A decimal number that when displayed is rounded to 2 places and with the appropriate prefix and suffix added.
 - `date`: A date in ISO 8601 format, i.e. YYYY-MM-DD (for example, `2022-01-05`). MM and DD must not exceed 
   the maximum possible actual values in the given month and year. When loaded, it's converted to `datetime.date`.
-- `time`: A time of day in the format HH:MM:SS (for example, `21:50:00`). HH must be less than 24; MM and SS must both be less than 60.
+- `time`: A time of day in the format HH:MM:SS (for example, `21:50:00`) or HH:MM (for example, `06:00`). HH must be less than 24; MM and SS must both be less than 60.
   When loaded, it's converted to `datetime.time`.
 - `datetime`: A time and date in a subset of the ISO 8601 format, specifically YYYY-MM-DD HH:MM:SS (for example, `2022-01-05 21:50:00`).
   The values have the same restrictions as `date` and `time`. When loaded, it's converted to `datetime.datetime`.
 - `timedelta`: A duration of time in the format XXdXXhXXmXXs, with each element optional, though at least one is required
   (for example, `2d15h` or `1h25m33s`). Unlike `time`, the total may exceed 24 hours, and each element has an unlimited value.
   When loaded, it's converted to `datetime.timedelta`, but only elements present in the raw value are displayed (exceeding their normal values if needed).
+- `calcdelta_d`, `calcdelta_t`, `calcdelta_dt`: Two `date`, `time`, or `datetime` values (stored as a list; both must be of the same type), representing a start time and an end time. When loaded, it's converted to one of the `Calcdelta` classes, which has the attributes `type`, `start`, `end`, and `delta`.
 
 ## The `formulas` value
 This value describes which values (if any) to calculate and display above the data, and how to calculate them.
 It is a dictionary where each key is a human-readable name of the formula and the value is a Python expression that calculates
-the corresponding value. All built-in variable are available, as well as the following local variables:
+the corresponding value. All built-in variable are available, plus the libraries `itertools` and `datetime`, as well as the following local variables:
 
 - `sheets`: The value of `dataset.sheets` where `dataset` is the currently loaded Dataset object. It is a dictionary
   where each key is the name of a datasheet and the value is a structure very similar to `format`, except instead of
@@ -56,6 +57,7 @@ the corresponding value. All built-in variable are available, as well as the fol
   and a cell ID as the second. The ID is one or more capital letters followed by one or more digits; the letter(s) represent
   a group, with A being the first group, B being the second, etc., until Z - it's then followed by AA, AB, and so on;
   the number represents a value in that group (note that they start at 1, not 0). Invalid cell IDs will raise an error.
+- `delta`: Calculates the difference (in the form of a `timedelta`) between two dates, two times, or two datetimes. In either case, this is stored as a pair of strings with formats identical to the corresponding formats listed above.
 
 ## The `sheets` value
 This value contains the actual data in the dataset.
