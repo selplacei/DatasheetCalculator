@@ -204,8 +204,33 @@ class Dataset:
 				self.results[label] = type(e).__name__ + ' (see output)'
 				sys.stderr.write(str(e) + '\n')
 
+	@staticmethod
+	def remove_format_from_sheet(sheet):
+		res = []
+		for group_data in sheet.values():
+			res.append(list(group_data.values()))
+		return res
+
 	def to_json(self):
-		return json.dumps(self)
+		final_data = {
+			"name": self.name,
+			"format": self.format
+		}
+		for k, v in (
+			("price_prefix", self.price_prefix),
+			("price_suffix", self.price_suffix),
+			("formulas", self.formulas)
+		):
+			if k in self._data:
+				final_data[k] = v
+		final_data['sheets'] = {}
+		for sheet_name, sheet_data in self.sheets.items():
+			final_data['sheets'][sheet_name] = self.remove_format_from_sheet(sheet_data)
+		if '__special__' in self._data['sheets']:
+			final_data['sheets']['__special__'] = self.remove_format_from_sheet(self.special)
+		if '__default__' in self._data['sheets']:
+			final_data['sheets']['__default__'] = self.remove_format_from_sheet(self.default)
+		return json.dumps(final_data, cls=DatasetEncoder, indent=4)
 
 
 class DatasetEncoder(json.JSONEncoder):
@@ -222,6 +247,9 @@ class DatasetEncoder(json.JSONEncoder):
 		if isinstance(o, datetime.datetime):
 			return o.strftime('%Y-%M-%d %H:%M:%S')
 		if isinstance(o, Timedelta):
-			return ''.join(f'{u}{v}' for u, v in o.fmt_values())
+			return ''.join(f'{u}{v}' for u, v in zip(o.fmt_values(), o.fmt))
 		if isinstance(o, datetime.timedelta):
 			return self.default(Timedelta(fmt='dhms', seconds=o.total_seconds()))
+		if isinstance(o, Calcdelta):
+			return [self.default(o.start), self.default(o.end)]
+		return super().default(o)

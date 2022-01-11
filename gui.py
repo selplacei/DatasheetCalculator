@@ -1,29 +1,159 @@
 import datetime
 import sys
+from pathlib import Path
 
-from PySide2.QtCore import Signal, QDate, QTime, QDateTime, Qt
+from PySide2.QtCore import Signal, QDate, QTime, QDateTime, Qt, QSize, QStandardPaths
 from PySide2.QtWidgets import (
 	QMainWindow, QWidget,
+	QAction,
 	QTabWidget, QLabel, QSpinBox, QDateTimeEdit, QDoubleSpinBox, QLineEdit,
-	QTabBar, QDateEdit, QTimeEdit, QPushButton, QInputDialog,
+	QTabBar, QDateEdit, QTimeEdit, QPushButton, QInputDialog, QMessageBox, QFileDialog,
 	QHBoxLayout, QVBoxLayout, QGridLayout
 )
+from PySide2.QtGui import QKeySequence, QDesktopServices
 import datasets
 
 
 class MainWindow(QMainWindow):
-	# TODO: use the same SingleXViews for different sheets because their structure
-	#  is identical and so that tabs don't switch when switching sheets
 	# TODO: update the console font
 	def __init__(self, parent=None):
 		super().__init__(parent)
 		#with open('/home/selplacei/Projects/DatasheetCalculator/sample.json') as f:
-		with open('/home/selplacei/Documents/mom_work_2021.json') as f:
+		# with open('/home/selplacei/Documents/mom_work_2021.json') as f:
+		# 	json_str = f.read()
+		self.dataset = None
+		self.dataset_view = None
+		self.file_path = None
+		self.edited = False
+
+		# Set up the menu bar
+		file_menu = self.menuBar().addMenu('&File')
+		edit_menu = self.menuBar().addMenu('&Edit')
+		for label, shortcut, slot, menu in (
+			('New', QKeySequence.New, self.on_new, file_menu),
+			('Open...', QKeySequence.Open, self.on_open, file_menu),
+			('Save', QKeySequence.Save, self.on_save, file_menu),
+			('Save as...', QKeySequence.SaveAs, self.on_save_as, file_menu),
+			('Add blank sheet', None, lambda: self.dataset_view.create_blank_sheet(), edit_menu),
+			('Duplicate sheet', None, lambda: self.dataset_view.duplicate_sheet(self.dataset_view.current_index()), edit_menu),
+			('Rename sheet...', None, lambda: self.dataset_view.user_rename_sheet(), edit_menu),
+			('|Refresh', QKeySequence.Refresh, self.on_refresh, edit_menu),
+			('Edit dataset directly', None, self.on_edit_directly, edit_menu)
+		):
+			if label.startswith('|'):
+				# Dirty hack, fight me
+				label = label[1:]
+				menu.addSeparator()
+			action = QAction(label, self)
+			action.setShortcut(shortcut)
+			action.triggered.connect(slot)
+			menu.addAction(action)
+		self.update_title()
+		self.setCentralWidget(QLabel('Press "File" -> "Open" to open a dataset.'))
+
+	def closeEvent(self, event):
+		if not self.unsaved_changes_check():
+			event.ignore()
+		else:
+			event.accept()
+
+	def init_dataset(self, file_path):
+		self.file_path = Path(file_path)
+		with open(self.file_path) as f:
 			json_str = f.read()
-		dataset = datasets.Dataset.from_json(json_str)
-		dataset_view = DatasetView(dataset)
-		self.setCentralWidget(dataset_view)
-		self.setWindowTitle(f'{dataset.name} - DatasheetCalculator')
+		self.dataset = datasets.Dataset.from_json(json_str)
+		self.dataset_view = DatasetView(self.dataset)
+		self.dataset_view.valueChanged.connect(lambda *_: self.set_edited(True))
+		if self.dataset_view.special_view:
+			self.dataset_view.special_view.valueChanged.connect(lambda *_: self.set_edited(True))
+		self.setCentralWidget(self.dataset_view)
+		self.setWindowTitle(f'{self.dataset.name} - DatasheetCalculator')
+
+	def update_title(self):
+		if self.dataset:
+			title = f'{self.dataset.name}'
+			if self.edited:
+				title += ' *'
+			title += ' - DatasheetCalculator'
+		else:
+			title = 'DatasheetCalculator'
+		self.setWindowTitle(title)
+
+	def set_edited(self, v):
+		self.edited = v
+		self.update_title()
+
+	def on_new(self):
+		if not self.unsaved_changes_check():
+			return
+		message_box = QMessageBox(self)
+		message_box.setWindowTitle('New - DatasheetCalculator')
+		message_box.setText(
+			'Creating datasets is currently not supported. '
+			'You must create a valid JSON file manually, then open it here.'
+		)
+		message_box.exec_()
+
+	def get_file_dialog_directory(self):
+		if self.file_path:
+			return str(self.file_path.parent)
+		return QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+
+	def on_open(self):
+		if not self.unsaved_changes_check():
+			return
+		file_path = QFileDialog.getOpenFileName(
+			self, 'Open dataset', self.get_file_dialog_directory(),
+			'Datasets (*.json);;All files (*.*)'
+		)[0]
+		if file_path:
+			self.init_dataset(file_path)
+
+	def on_save(self):
+		if not (self.file_path and self.dataset):
+			return
+		with open(self.file_path, 'w') as f:
+			f.write(self.dataset.to_json())
+		self.set_edited(False)
+
+	def on_save_as(self):
+		if not self.dataset:
+			return
+		file_path = QFileDialog.getSaveFileName(
+			self, 'Open dataset', self.get_file_dialog_directory(),
+			'Datasets (*.json);;All files (*.*)'
+		)[0]
+		if file_path:
+			with open(file_path, 'w') as f:
+				f.write(self.dataset.to_json())
+			self.file_path = Path(file_path)
+		self.set_edited(False)
+
+	def on_refresh(self):
+		if not self.unsaved_changes_check():
+			return
+		self.init_dataset(self.file_path)
+
+	def on_edit_directly(self):
+		if not self.unsaved_changes_check():
+			return
+		QDesktopServices.openUrl(self.file_path.absolute().as_uri())
+
+	def unsaved_changes_check(self):
+		"""Returns False if the action was canceled."""
+		if not self.edited:
+			return True
+		message_box = QMessageBox(self)
+		message_box.setText('The dataset was modified.')
+		message_box.setInformativeText('Save changes?')
+		message_box.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
+		message_box.setDefaultButton(QMessageBox.Save)
+		result = message_box.exec_()
+		if result == QMessageBox.Cancel:
+			return False
+		elif result == QMessageBox.Save:
+			self.on_save()
+		return True
 
 
 class DatasetView(QWidget):
@@ -73,7 +203,7 @@ class DatasetView(QWidget):
 		self.tab_bar.currentChanged.connect(self.recompute)
 		self.tab_bar.currentChanged.connect(self.update_views)
 		self.valueChanged.connect(self.update_dataset)
-		self.extra_buttons.createSheet.connect(lambda: self.create_sheet(f'Sheet {self.tab_bar.count() + 1}'))
+		self.extra_buttons.createSheet.connect(self.create_blank_sheet)
 		self.extra_buttons.duplicateSheet.connect(lambda: self.duplicate_sheet(
 			self.current_index()
 		))
@@ -160,6 +290,9 @@ class DatasetView(QWidget):
 		self.tab_bar.addTab(name)
 		if switch:
 			self.set_current_sheet(-1)
+
+	def create_blank_sheet(self):
+		self.create_sheet(f'Sheet {self.tab_bar.count() + 1}')
 
 	def duplicate_sheet(self, index, switch=True, exist_ok=True):
 		name = self.sheet_name_at(index)
