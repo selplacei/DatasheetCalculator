@@ -84,7 +84,7 @@ class Dataset:
 		self.formulas = data.get('formulas', None)
 		self.results = {k: None for k in self.formulas.keys()}
 		self.format = data['format']
-		self.special_format = data['special']
+		self.special_format = data.get('special', None)
 		self.groups = self.format.keys()
 		self.sheets = {}
 		for sheet_name, sheet_data in data['sheets'].items():
@@ -219,6 +219,7 @@ class Dataset:
 		for k, v in (
 			("price_prefix", self.price_prefix),
 			("price_suffix", self.price_suffix),
+			("special", self.special_format),
 			("formulas", self.formulas)
 		):
 			if k in self._data:
@@ -226,7 +227,7 @@ class Dataset:
 		final_data['sheets'] = {}
 		for sheet_name, sheet_data in self.sheets.items():
 			final_data['sheets'][sheet_name] = self.remove_format_from_sheet(sheet_data)
-		if '__special__' in self._data['sheets']:
+		if self.special:
 			final_data['sheets']['__special__'] = self.remove_format_from_sheet(self.special)
 		if '__default__' in self._data['sheets']:
 			final_data['sheets']['__default__'] = self.remove_format_from_sheet(self.default)
@@ -247,7 +248,7 @@ class DatasetEncoder(json.JSONEncoder):
 		if isinstance(o, datetime.datetime):
 			return o.strftime('%Y-%M-%d %H:%M:%S')
 		if isinstance(o, Timedelta):
-			return ''.join(f'{u}{v}' for u, v in zip(o.fmt_values(), o.fmt))
+			return ''.join(f'{v}{u}' for u, v in o.fmt_values().items())
 		if isinstance(o, datetime.timedelta):
 			return self.default(Timedelta(fmt='dhms', seconds=o.total_seconds()))
 		if isinstance(o, Calcdelta):

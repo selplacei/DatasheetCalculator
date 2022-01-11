@@ -28,26 +28,16 @@ class MainWindow(QMainWindow):
 
 		# Set up the menu bar
 		file_menu = self.menuBar().addMenu('&File')
-		edit_menu = self.menuBar().addMenu('&Edit')
-		for label, shortcut, slot, menu in (
-			('New', QKeySequence.New, self.on_new, file_menu),
-			('Open...', QKeySequence.Open, self.on_open, file_menu),
-			('Save', QKeySequence.Save, self.on_save, file_menu),
-			('Save as...', QKeySequence.SaveAs, self.on_save_as, file_menu),
-			('Add blank sheet', None, lambda: self.dataset_view.create_blank_sheet(), edit_menu),
-			('Duplicate sheet', None, lambda: self.dataset_view.duplicate_sheet(self.dataset_view.current_index()), edit_menu),
-			('Rename sheet...', None, lambda: self.dataset_view.user_rename_sheet(), edit_menu),
-			('|Refresh', QKeySequence.Refresh, self.on_refresh, edit_menu),
-			('Edit dataset directly', None, self.on_edit_directly, edit_menu)
+		for label, shortcut, slot in (
+			('New', QKeySequence.New, self.on_new),
+			('Open...', QKeySequence.Open, self.on_open),
+			('Save', QKeySequence.Save, self.on_save),
+			('Save as...', QKeySequence.SaveAs, self.on_save_as),
 		):
-			if label.startswith('|'):
-				# Dirty hack, fight me
-				label = label[1:]
-				menu.addSeparator()
 			action = QAction(label, self)
 			action.setShortcut(shortcut)
 			action.triggered.connect(slot)
-			menu.addAction(action)
+			file_menu.addAction(action)
 		self.update_title()
 		self.setCentralWidget(QLabel('Press "File" -> "Open" to open a dataset.'))
 
@@ -58,6 +48,27 @@ class MainWindow(QMainWindow):
 			event.accept()
 
 	def init_dataset(self, file_path):
+		if not self.file_path:
+			# First time a file was opened this session; add sheet manipulation buttons
+			edit_menu = self.menuBar().addMenu('&Edit')
+			for label, slot in (
+				('Refresh', self.on_refresh),
+				('Edit dataset directly', self.on_edit_directly)
+			):
+				action = QAction(label, self)
+				action.triggered.connect(slot)
+				edit_menu.addAction(action)
+			edit_menu.addSeparator()
+			for label, slot in (
+				# Use lambdas so that the slots work across multiple dataset_view objects
+				('Add blank sheet', lambda: self.dataset_view.create_blank_sheet()),
+				('Duplicate sheet', lambda: self.dataset_view.duplicate_sheet(self.dataset_view.current_index())),
+				('Rename sheet...', lambda: self.dataset_view.user_rename_sheet()),
+				('Delete sheet', lambda: self.dataset_view.delete_sheet(self.dataset_view.current_index()))
+			):
+				action = QAction(label, self)
+				action.triggered.connect(slot)
+				edit_menu.addAction(action)
 		self.file_path = Path(file_path)
 		with open(self.file_path) as f:
 			json_str = f.read()
@@ -157,6 +168,7 @@ class MainWindow(QMainWindow):
 
 
 class DatasetView(QWidget):
+	SPECIAL_SHEET_NAME = '[Global values]'
 	valueChanged = Signal(str, str, str, object)  # sheet, group, value name, value
 
 	def __init__(self, dataset, parent=None):
@@ -184,7 +196,7 @@ class DatasetView(QWidget):
 			self.current_sheet_name(), g, n, v
 		))
 		if self.dataset.special:
-			self.tab_bar.addTab('[Global Values]')
+			self.tab_bar.addTab(self.SPECIAL_SHEET_NAME)
 		for sheet_name in self.dataset.sheets.keys():
 			self.tab_bar.addTab(sheet_name)
 
@@ -198,7 +210,9 @@ class DatasetView(QWidget):
 		if self.dataset.special:
 			self.sheet_view.hide()
 		layout.addWidget(self.tab_bar)
-		layout.addWidget(self.extra_buttons)
+		# The functionality of extra buttons is now in the menu bar
+		# Keeping the definitions just in case
+		# layout.addWidget(self.extra_buttons)
 		self.setLayout(layout)
 		self.tab_bar.currentChanged.connect(self.recompute)
 		self.tab_bar.currentChanged.connect(self.update_views)
@@ -261,7 +275,7 @@ class DatasetView(QWidget):
 		if index >= 0:
 			return list(self.dataset.sheets.keys())[index]
 		elif index == -1:
-			return self.dataset.special
+			return self.SPECIAL_SHEET_NAME
 
 	def set_current_sheet(self, index):
 		# Negative indices are supported
@@ -292,9 +306,15 @@ class DatasetView(QWidget):
 			self.set_current_sheet(-1)
 
 	def create_blank_sheet(self):
-		self.create_sheet(f'Sheet {self.tab_bar.count() + 1}')
+		self.create_sheet(f'Sheet {self.tab_bar.count() + 1 - bool(self.dataset.special)}')
 
 	def duplicate_sheet(self, index, switch=True, exist_ok=True):
+		if index == -1:
+			box = QMessageBox(self)
+			box.setWindowTitle('DatasheetCalculator')
+			box.setText(f'The {self.SPECIAL_SHEET_NAME} sheet cannot be duplicated.')
+			box.exec_()
+			return
 		name = self.sheet_name_at(index)
 		sheet = self.sheet_at(index)
 		name += ' (copy)'
@@ -304,7 +324,49 @@ class DatasetView(QWidget):
 		if switch:
 			self.set_current_sheet(-1)
 
+	def delete_sheet(self, index):
+		if index == -1:
+			# Assume a valid state, i.e. there is a special sheet
+			box = QMessageBox(self)
+			box.setWindowTitle('DatasheetCalculator')
+			box.setText(f'Are you sure you want to delete {self.SPECIAL_SHEET_NAME}?')
+			box.setStandardButtons(QMessageBox.No | QMessageBox.Yes)
+			box.setDefaultButton(QMessageBox.No)
+			if box.exec_() == QMessageBox.No:
+				return
+			if self.current_index() == -1:
+				self.set_current_sheet(1)
+			self.tab_bar.removeTab(0)
+			self.special_view.hide()
+			self.special_view.deleteLater()
+			self.special_view = None
+			self.dataset.special = None
+			self.dataset.special_format = None
+			self.sheet_view.show()
+		else:
+			if len(self.dataset.sheets) < 2:
+				box = QMessageBox(self)
+				box.setWindowTitle('DatasheetCalculator')
+				box.setText('You cannot delete the only sheet in the dataset.')
+				box.exec_()
+				return
+			try:
+				self.set_current_sheet(index + 1)
+			except IndexError:
+				self.set_current_sheet(index - 1)
+			del self.dataset.sheets[self.sheet_name_at(index)]
+			if self.dataset.special:
+				self.tab_bar.removeTab(index + 1)
+			else:
+				self.tab_bar.removeTab(index)
+
 	def user_rename_sheet(self):
+		if self.current_index() == -1:
+			box = QMessageBox(self)
+			box.setWindowTitle('DatasheetCalculator')
+			box.setText(f'The {self.SPECIAL_SHEET_NAME} sheet cannot be renamed.')
+			box.exec_()
+			return
 		result, ok = QInputDialog().getText(
 			self, "Rename sheet", "New sheet name:", text=self.current_sheet_name()
 		)
@@ -312,6 +374,8 @@ class DatasetView(QWidget):
 			self.rename_sheet(self.current_index(), result)
 
 	def rename_sheet(self, index, result, exist_ok=True):
+		if index == -1:
+			return
 		new_sheets = list(self.dataset.sheets.items())
 		previous, sheet = new_sheets[index]
 		result = self.find_non_duplicate_name(result, exist_ok)
@@ -342,8 +406,8 @@ class ExtraButtons(QWidget):
 		self.rename_sheet_btn.clicked.connect(self.renameSheet.emit)
 
 	def set_special_selected(self, val):
-		self.duplicate_sheet_btn.setDisabled(val)
-		self.rename_sheet_btn.setDisabled(val)
+		self.duplicate_sheet_btn.setDisabled(bool(val))
+		self.rename_sheet_btn.setDisabled(bool(val))
 
 
 class FormulaView(QWidget):
