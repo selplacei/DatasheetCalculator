@@ -53,7 +53,8 @@ class MainWindow(QMainWindow):
 			edit_menu = self.menuBar().addMenu('&Edit')
 			for label, slot in (
 				('Refresh', self.on_refresh),
-				('Edit dataset directly', self.on_edit_directly)
+				('Edit dataset directly', self.on_edit_directly),
+				('Rename dataset', self.on_rename_dataset)
 			):
 				action = QAction(label, self)
 				action.triggered.connect(slot)
@@ -150,11 +151,16 @@ class MainWindow(QMainWindow):
 			return
 		QDesktopServices.openUrl(self.file_path.absolute().as_uri())
 
+	def on_rename_dataset(self):
+		self.dataset_view.user_rename_dataset()
+		self.set_edited(True)  # Also updates the title
+
 	def unsaved_changes_check(self):
 		"""Returns False if the action was canceled."""
 		if not self.edited:
 			return True
 		message_box = QMessageBox(self)
+		message_box.setWindowTitle('DatasheetCalculator')
 		message_box.setText('The dataset was modified.')
 		message_box.setInformativeText('Save changes?')
 		message_box.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
@@ -228,6 +234,10 @@ class DatasetView(QWidget):
 		self.dataset.sheets[sheet][group][name] = value
 		if recompute:
 			self.recompute()
+
+	def rename_dataset(self, name):
+		self.dataset.name = name
+		self.name_label.setText(self.dataset.name)
 
 	def recompute(self):
 		if not self.special_selected():
@@ -359,6 +369,13 @@ class DatasetView(QWidget):
 				self.tab_bar.removeTab(index + 1)
 			else:
 				self.tab_bar.removeTab(index)
+
+	def user_rename_dataset(self):
+		result, ok = QInputDialog().getText(
+			self, "Rename dataset", "New dataset name:", text=self.dataset.name
+		)
+		if ok:
+			self.rename_dataset(result)
 
 	def user_rename_sheet(self):
 		if self.current_index() == -1:

@@ -1,0 +1,148 @@
+{
+    "name": "Rural Carrier - example dataset",
+    "format": {
+        "Hours": {
+            "Saturday": "calcdelta_t",
+            "Sunday": "calcdelta_t",
+            "Monday": "calcdelta_t",
+            "Tuesday": "calcdelta_t",
+            "Wednesday": "calcdelta_t",
+            "Thursday": "calcdelta_t",
+            "Friday": "calcdelta_t"
+        },
+        "Routes": {
+            "Saturday": "text",
+            "Sunday": "text",
+            "Monday": "text",
+            "Tuesday": "text",
+            "Wednesday": "text",
+            "Thursday": "text",
+            "Friday": "text"
+        },
+        "POV Miles": {
+            "Saturday": "int",
+            "Sunday": "int",
+            "Monday": "int",
+            "Tuesday": "int",
+            "Wednesday": "int",
+            "Thursday": "int",
+            "Friday": "int"
+        },
+        "Lunch": {
+            "Saturday": "timedelta",
+            "Sunday": "timedelta",
+            "Monday": "timedelta",
+            "Tuesday": "timedelta",
+            "Wednesday": "timedelta",
+            "Thursday": "timedelta",
+            "Friday": "timedelta"
+        }
+    },
+    "special": {
+        "Evaluated hours": {
+            "R1": "float",
+            "R2": "float",
+            "R3": "float",
+            "R4": "float",
+            "R5": "float",
+            "R6": "float",
+            "R7": "float",
+            "R8": "float",
+            "R9": "float",
+            "R10": "float"
+        },
+        "Other": {
+            "Overtime threshold": "int",
+            "Hourly wage": "price",
+            "Overtime hourly wage": "price",
+            "POV compensation per mile": "price"
+        }
+    },
+    "formulas": {
+        "Actual hours this week": "round(sum(v.delta.total_seconds() for v in current['Hours'].values()) / 3600, 2) - (sum(d.total_seconds() for d in current['Lunch'].values()) / 3600)",
+        "Evaluated hours this week": "sum(special['Evaluated hours'][r.upper()] for r in current['Routes'].values() if r)",
+        "Hours left until overtime": "round(max(0, special['Other']['Overtime threshold'] - results['Actual hours this week']), 2) or f'Overtime reached ({round(results[\"Actual hours this week\"] - special[\"Other\"][\"Overtime threshold\"], 2)} hours)'",
+        "Income earned this week": "price(((results['Evaluated hours this week'] * special['Other']['Hourly wage']) if (not isinstance(results['Hours left until overtime'], str)) else ((min(results['Actual hours this week'], 40) * special['Other']['Hourly wage']) + (max(0, results['Actual hours this week'] - 40) * special['Other']['Overtime hourly wage']))) + (sum(current['POV Miles'].values()) * special['Other']['POV compensation per mile']))"
+    },
+    "sheets": {
+        "Pay period 1": [
+            [
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ],
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ],
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ],
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ],
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ],
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ],
+                [
+                    "00:00:00",
+                    "00:00:00"
+                ]
+            ],
+            [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                "0d0h0m0s",
+                "0d0h0m0s",
+                "0d0h0m0s",
+                "0d0h0m0s",
+                "0d0h0m0s",
+                "0d0h0m0s",
+                "0d0h0m0s"
+            ]
+        ],
+        "__special__": [
+            [
+                9.0,
+                9.0,
+                9.0,
+                9.0,
+                9.0,
+                9.0,
+                9.0,
+                9.0,
+                9.0,
+                9.0
+            ],
+            [
+                40,
+                20.00,
+                30.00,
+                0.8
+            ]
+        ]
+    }
+}
